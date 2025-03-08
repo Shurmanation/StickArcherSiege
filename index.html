@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Archery 2.0 - Phaser Game</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #2c3e50;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        #game-container {
+            width: 800px;
+            height: 600px;
+            position: relative;
+            overflow: hidden;
+            border: 2px solid #34495e;
+            touch-action: none; /* Prevent browser handling of touch events */
+            cursor: crosshair; /* Show a crosshair cursor to indicate shooting */
+        }
+        canvas {
+            display: block; /* Remove any default spacing */
+        }
+        #debug-info {
+            color: white;
+            margin-top: 10px;
+            font-family: monospace;
+        }
+        /* Removed CSS for debug elements */
+    </style>
+</head>
+<body>
+    <div id="game-container"></div>
+    <div id="debug-info" style="display: none;">Loading game...</div>
+    
+    <!-- Removed debug buttons -->
+    
+    <!-- Load Phaser from CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.min.js"></script>
+    
+    <!-- Check if Phaser loaded properly -->
+    <script>
+        // Global function to access the active game scene
+        function getGameScene() {
+            if (window.game && window.game.scene && window.game.scene.scenes && window.game.scene.scenes[0]) {
+                return window.game.scene.scenes[0];
+            }
+            return null;
+        }
+        
+        window.addEventListener('load', function() {
+            if (typeof Phaser === 'undefined') {
+                document.getElementById('debug-info').textContent = 'ERROR: Phaser not loaded! Check console for details.';
+                console.error('Phaser library failed to load. Check your internet connection or try a different CDN.');
+            } else {
+                document.getElementById('debug-info').textContent = 'Phaser loaded successfully. Version: ' + Phaser.VERSION;
+                console.log('Phaser loaded successfully. Version:', Phaser.VERSION);
+            }
+            
+            // Remove mouse coordinate tracking
+            
+            // Add click listener to the game container for proper event handling
+            document.getElementById('game-container').addEventListener('click', function(event) {
+                // Click handler preserved for future use (e.g., damage effects)
+                // Border flash effect removed
+            });
+        });
+    </script>
+    
+    <!-- Load game main script -->
+    <script src="src/main.js" type="module"></script>
+</body>
+</html> 
