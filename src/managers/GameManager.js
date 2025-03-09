@@ -41,6 +41,14 @@ class GameManager {
                 // Future unit types can be added here
             },
             
+            // Platform ability configuration
+            platformAbility: {
+                cooldown: 5000,        // Base cooldown in ms (5 seconds)
+                duration: 6000,        // How long platforms exist (6 seconds)
+                width: 70,             // Base platform width
+                hasUpgrades: false,    // Whether upgrades are unlocked
+            },
+            
             // Base upgrades and their costs
             baseUpgrades: {
                 longbowTraining: { 
@@ -54,9 +62,28 @@ class GameManager {
                     effectKey: "reinforcedWalls"
                 },
                 improvedArrows: { 
-                    cost: 250,
-                    description: "Hero arrows deal 20% more damage",
+                    cost: 300,
+                    description: "Increases arrow damage by 20%",
                     effectKey: "improvedArrows"
+                },
+                // Platform ability upgrades
+                extendedPlatforms: {
+                    cost: 300,
+                    description: "Platforms last 50% longer",
+                    effectKey: "extendedPlatforms",
+                    category: "platformAbility"
+                },
+                quickSummoning: {
+                    cost: 350,
+                    description: "Reduces platform cooldown by 25%",
+                    effectKey: "quickSummoning",
+                    category: "platformAbility"
+                },
+                widePlatforms: {
+                    cost: 400,
+                    description: "Increases platform width by 40%",
+                    effectKey: "widePlatforms",
+                    category: "platformAbility"
                 }
             }
         };

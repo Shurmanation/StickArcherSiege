@@ -47,6 +47,10 @@ export default class GameScene extends Phaser.Scene {
         // Set physics world bounds to our wider world
         this.physics.world.setBounds(0, 0, this.worldBounds.width, this.worldBounds.height);
         
+        // Initialize arrays
+        this.arrows = [];
+        this.troops = [];
+        
         // Create stars in the background for parallax effect
         this.createStars();
     
@@ -62,7 +66,7 @@ export default class GameScene extends Phaser.Scene {
         // Set up camera to follow hero with offset and deadzone
         this.setupCamera();
         
-        // Set up collisions
+        // Set up collisions after hero is fully initialized
         this.setupCollisions();
         
         // Set up input controls (keyboard, mouse, etc.)
@@ -393,13 +397,14 @@ export default class GameScene extends Phaser.Scene {
      * Set up all collision handlers
      */
     setupCollisions() {
-        // Hero collides with platforms
+        // Hero collides with platforms (created in ground/level setup)
         this.physics.add.collider(this.hero.sprite, this.platforms);
         
         // Hero collides with bases
         this.physics.add.collider(this.hero.sprite, [this.playerBase.sprite, this.enemyBase.sprite]);
         
         // Note: Arrow collisions with bases are set up individually in addArrowToScene method
+        // Note: Platform collisions are handled directly in the Platform class itself
     }
     
     /**
@@ -745,7 +750,7 @@ export default class GameScene extends Phaser.Scene {
         // Initial update
         this.updateHeroHealthBar();
     }
-
+    
     /**
      * Update health bar based on hero's current health
      */
@@ -1049,6 +1054,37 @@ export default class GameScene extends Phaser.Scene {
                 // Placeholder for improving hero arrow damage
                 this.showUpgradeMessage('Arrow damage +20%!', '#00FF00');
                 // Future implementation: this.hero.arrowDamageMultiplier = 1.2;
+                break;
+                
+            // Platform ability upgrades
+            case 'extendedPlatforms':
+                if (this.hero) {
+                    // Increase platform duration by 50%
+                    const newDuration = Math.floor(gameManager.economyConfig.platformAbility.duration * 1.5);
+                    this.hero.platformDuration = newDuration;
+                    gameManager.economyConfig.platformAbility.hasUpgrades = true;
+                    this.showUpgradeMessage('Platforms last 50% longer!', '#00FF00');
+                }
+                break;
+                
+            case 'quickSummoning':
+                if (this.hero) {
+                    // Reduce cooldown by 25%
+                    const newCooldown = Math.floor(gameManager.economyConfig.platformAbility.cooldown * 0.75);
+                    this.hero.platformCooldown = newCooldown;
+                    gameManager.economyConfig.platformAbility.hasUpgrades = true;
+                    this.showUpgradeMessage('Platform cooldown reduced by 25%!', '#00FF00');
+                }
+                break;
+                
+            case 'widePlatforms':
+                if (this.hero) {
+                    // Increase platform width by 40%
+                    const newWidth = Math.floor(gameManager.economyConfig.platformAbility.width * 1.4);
+                    this.hero.platformWidth = newWidth;
+                    gameManager.economyConfig.platformAbility.hasUpgrades = true;
+                    this.showUpgradeMessage('Platforms are 40% wider!', '#00FF00');
+                }
                 break;
                 
             default:
