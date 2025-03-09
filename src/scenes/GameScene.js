@@ -76,14 +76,15 @@ export default class GameScene extends Phaser.Scene {
     }
 
     update(time, delta) {
-        // Skip updates if game is over
+        // Skip update if game is not active
         if (!this.gameActive) return;
         
-        if (this.hero) {
+        // Get player input and update hero
+        if (this.hero && this.keys) {
             this.hero.update(this.keys);
         }
         
-        // Update star positions for parallax effect
+        // Update UI
         this.updateStarParallax();
         
         // Update troop movements
@@ -216,6 +217,9 @@ export default class GameScene extends Phaser.Scene {
                     },
                     null, this);
             }
+            
+            // NOTE: Intentionally NOT adding collision with platforms
+            // Arrows should pass through platforms completely
         }
     }
     
@@ -609,19 +613,20 @@ export default class GameScene extends Phaser.Scene {
      * Set up all input controls for the game
      */
     setupInputs() {
-        // Set up movement controls (WASD)
+        // Create cursor input for controlling the hero
         this.keys = this.input.keyboard.addKeys({
-            up: Phaser.Input.Keyboard.KeyCodes.W,
-            down: Phaser.Input.Keyboard.KeyCodes.S,
             left: Phaser.Input.Keyboard.KeyCodes.A,
             right: Phaser.Input.Keyboard.KeyCodes.D,
-            space: Phaser.Input.Keyboard.KeyCodes.SPACE // Add space bar for platform summoning
+            up: Phaser.Input.Keyboard.KeyCodes.W,
+            down: Phaser.Input.Keyboard.KeyCodes.S,
+            // Keep SPACE for other functionality but not for platform summoning
+            space: Phaser.Input.Keyboard.KeyCodes.SPACE
         });
         
-        // Setup mouse input for charging and shooting with camera position adjustment
+        // Setup mouse controls
         this.setupMouseControls();
         
-        // Setup keyboard input for spawning troops
+        // Setup troop spawning controls
         this.setupTroopControls();
     }
     
@@ -658,7 +663,7 @@ export default class GameScene extends Phaser.Scene {
         });
         
         this.input.keyboard.on('keydown-TWO', () => {
-            this.spawnAllyTroopWithGold('Medium');
+            this.spawnAllyTroopWithGold('Ranged');
         });
         
         this.input.keyboard.on('keydown-THREE', () => {
@@ -678,9 +683,32 @@ export default class GameScene extends Phaser.Scene {
             this.purchaseBaseUpgrade('improvedArrows');
         });
         
+        // Add back enemy troop spawning for testing - using number keys with SHIFT
+        this.input.keyboard.on('keydown-SEVEN', () => {
+            if (this.gameActive) {
+                this.spawnEnemyTroop("Light");
+                console.log("Spawned enemy Light troop (testing)");
+            }
+        });
+        
+        this.input.keyboard.on('keydown-EIGHT', () => {
+            if (this.gameActive) {
+                this.spawnEnemyTroop("Ranged");
+                console.log("Spawned enemy Ranged troop (testing)");
+            }
+        });
+        
+        this.input.keyboard.on('keydown-NINE', () => {
+            if (this.gameActive) {
+                this.spawnEnemyTroop("Heavy");
+                console.log("Spawned enemy Heavy troop (testing)");
+            }
+        });
+        
         // Add debug info about controls
         console.log("Troop Controls:");
-        console.log("Ally Troops: 1 (Light), 2 (Medium), 3 (Heavy)");
+        console.log("Ally Troops: 1 (Light), 2 (Ranged), 3 (Heavy)");
+        console.log("Enemy Troops (Testing): 7 (Light), 8 (Ranged), 9 (Heavy)");
         console.log("Base Upgrades: Z (Longbow Training), X (Reinforced Walls), C (Improved Arrows)");
     }
 
@@ -763,16 +791,37 @@ export default class GameScene extends Phaser.Scene {
         this.goldText.setScrollFactor(0); // Fix to camera so it stays on screen
         this.goldText.setDepth(100);      // Make sure it's visible above other elements
         
-        // Set up passive income timer
+        // Set up passive income timer - ensure it's properly configured
+        if (this.passiveIncomeTimer) {
+            this.passiveIncomeTimer.remove();
+        }
+        
         this.passiveIncomeTimer = this.time.addEvent({
             delay: gameManager.economyConfig.passiveIncome.interval,
             callback: this.generatePassiveIncome,
             callbackScope: this,
-            loop: true
+            loop: true,
+            startAt: 0
         });
         
-        // Create upgrade button text at the bottom of the screen (visual reference for upgrade options)
-        const upgradeInfo = this.add.text(10, this.cameras.main.height - 60, 
+        // Generate initial passive income immediately to ensure it's working
+        this.generatePassiveIncome();
+        
+        // Move control information to top-left under gold display
+        // Create troop spawning info below the gold display
+        const troopInfo = this.add.text(10, 35, 
+            'Troops: [1] Light (20g)  [2] Ranged (35g)  [3] Heavy (50g)  Testing: [7-9] Enemy troops', {
+            fontFamily: 'Arial',
+            fontSize: 12,
+            color: '#FFFFFF',
+            stroke: '#000000',
+            strokeThickness: 1
+        });
+        troopInfo.setScrollFactor(0);
+        troopInfo.setDepth(100);
+        
+        // Create upgrade button text below troop info
+        const upgradeInfo = this.add.text(10, 55, 
             'Upgrades: [Z] Longbow (400g)  [X] Reinforced Walls (300g)  [C] Improved Arrows (250g)', {
             fontFamily: 'Arial',
             fontSize: 12,
@@ -782,27 +831,18 @@ export default class GameScene extends Phaser.Scene {
         });
         upgradeInfo.setScrollFactor(0);
         upgradeInfo.setDepth(100);
-        
-        // Create troop spawning info at the bottom of the screen
-        const troopInfo = this.add.text(10, this.cameras.main.height - 30, 
-            'Troops: [1] Light (20g)  [2] Medium (35g)  [3] Heavy (50g)', {
-            fontFamily: 'Arial',
-            fontSize: 12,
-            color: '#FFFFFF',
-            stroke: '#000000',
-            strokeThickness: 1
-        });
-        troopInfo.setScrollFactor(0);
-        troopInfo.setDepth(100);
     }
     
     /**
      * Generate passive income on timer
      */
     generatePassiveIncome() {
+        if (!this.gameActive) return;
+        
         const baseAmount = gameManager.economyConfig.passiveIncome.baseAmount;
         gameManager.addGold(baseAmount, 'passive');
         this.updateGoldDisplay();
+        console.log(`Passive income: +${baseAmount} gold`);
     }
     
     /**

@@ -36,7 +36,7 @@ class GameManager {
             // Unit costs - used both for spawning ally units and calculating enemy kill rewards
             unitCosts: {
                 Light: 20,
-                Medium: 35,
+                Ranged: 35,
                 Heavy: 50,
                 // Future unit types can be added here
             },

@@ -129,17 +129,6 @@ export default class Arrow {
     }
     
     setupCollisions() {
-        // Set up collision with platforms (ground and other static objects)
-        if (this.scene.platforms) {
-            this.scene.physics.add.collider(
-                this.sprite, 
-                this.scene.platforms,
-                this.hitPlatform,
-                null,
-                this
-            );
-        }
-        
         // Set up arrow lifetime
         this.scene.time.delayedCall(
             this.options.lifetime,
@@ -147,21 +136,8 @@ export default class Arrow {
             [],
             this
         );
-    }
-    
-    hitPlatform(arrow, platform) {
-        if (!this.hasHit) {
-            this.hasHit = true;
-            
-            // Stop arrow movement
-            arrow.body.setVelocity(0, 0);
-            arrow.body.setAllowGravity(false);
-            
-            // Make arrow stick for a moment before disappearing
-            this.scene.time.delayedCall(900, () => {
-                this.destroy();
-            });
-        }
+        
+        // Note: Base collisions are set up in GameScene.addArrowToScene method
     }
     
     /**

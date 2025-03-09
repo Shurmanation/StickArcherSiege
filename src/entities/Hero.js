@@ -5,8 +5,6 @@
 
 // Import Arrow class
 import Arrow from './Arrow.js';
-// Import SummonedPlatform class
-import SummonedPlatform from './SummonedPlatform.js';
 
 export default class Hero {
     constructor(scene, x, y) {
@@ -64,13 +62,6 @@ export default class Hero {
         // Hide power bar initially
         this.powerBarBackground.setVisible(false);
         this.powerBarFill.setVisible(false);
-        
-        // Platform summoning ability properties
-        this.platformWidth = 100;
-        this.platformHeight = 10;
-        this.platformDuration = 3000; // ms
-        this.platformCooldown = 10000; // ms
-        this.lastPlatformTime = 0;
         
         // Bind update to ensure correct 'this' context
         this.update = this.update.bind(this);
@@ -159,46 +150,6 @@ export default class Hero {
         if (keys.down.isDown && !onGround) {
             this.sprite.body.setVelocityY(this.fastFallSpeed);
         }
-        
-        // Handle platform summoning with space bar
-        if (keys.space && keys.space.isDown && !onGround) {
-            this.summonPlatform();
-        }
-    }
-    
-    /**
-     * Summon a platform beneath the hero
-     * @returns {SummonedPlatform|null} The summoned platform or null if cooldown active
-     */
-    summonPlatform() {
-        const now = this.scene.time.now;
-        
-        // Check cooldown
-        if (now < this.lastPlatformTime + this.platformCooldown) {
-            console.log('Platform ability on cooldown');
-            return null;
-        }
-        
-        // Update cooldown time
-        this.lastPlatformTime = now;
-        
-        // Calculate platform position (align top with hero's bottom)
-        const platformY = this.sprite.y + (this.sprite.height / 2) + (this.platformHeight / 2);
-        
-        // Create the platform
-        const platform = new SummonedPlatform(
-            this.scene,
-            this.sprite.x,
-            platformY,
-            this.platformWidth,
-            this.platformHeight,
-            this.platformDuration
-        );
-        
-        // Set up one-way collision with hero
-        platform.setupOneWayCollision(this);
-        
-        return platform;
     }
     
     /**
