@@ -19,6 +19,7 @@ class GameManager {
         
         // Economy system
         this.gold = 100;           // Starting gold for the player
+        this.xp = 0;               // Starting XP for the player
         
         // Economy configuration - these values can be adjusted via difficulty or upgrades
         this.economyConfig = {
@@ -31,6 +32,16 @@ class GameManager {
             // Kill reward settings
             killRewards: {
                 basePercentage: 0.5, // Base percentage of unit cost rewarded (50%)
+            },
+            
+            // XP reward settings
+            xpRewards: {
+                troopKill: {
+                    Light: 10,
+                    Ranged: 15,
+                    Heavy: 20,
+                },
+                baseDestroy: 100,
             },
             
             // Unit costs - used both for spawning ally units and calculating enemy kill rewards
@@ -92,8 +103,7 @@ class GameManager {
         this.purchasedUpgrades = {};
         
         // Placeholders for future features
-        // TODO: Add XP system
-        // this.xp = 0;
+        // TODO: Add XP system has been implemented
         
         // TODO: Add SP (Stick Points) meta-upgrade system
         // this.stickPoints = 0;
@@ -108,10 +118,10 @@ class GameManager {
         this.difficulty = null;
         this.currentRound = 1;
         this.gold = 100; // Reset gold to starting value
+        this.xp = 0;     // Reset XP to starting value
         this.purchasedUpgrades = {}; // Reset upgrades
         
         // Reset future properties when implemented
-        // this.xp = 0;
         // this.stickPoints = 0;
     }
     
@@ -187,6 +197,18 @@ class GameManager {
             console.log(`Not enough gold for ${reason}. Required: ${amount}, Available: ${this.gold}`);
             return false;
         }
+    }
+    
+    /**
+     * Add XP to the player
+     * @param {number} amount - Amount of XP to add
+     * @param {string} source - Source of XP (for logging/tracking)
+     * @returns {number} - New XP total
+     */
+    addXP(amount, source = 'unknown') {
+        this.xp += amount;
+        console.log(`Added ${amount} XP from ${source}. New total: ${this.xp}`);
+        return this.xp;
     }
     
     /**

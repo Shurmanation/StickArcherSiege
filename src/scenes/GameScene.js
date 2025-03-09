@@ -99,6 +99,9 @@ export default class GameScene extends Phaser.Scene {
         
         // Update gold display if it exists
         this.updateGoldDisplay();
+        
+        // Update XP display if it exists
+        this.updateXPDisplay();
     }
     
     /**
@@ -421,6 +424,16 @@ export default class GameScene extends Phaser.Scene {
      */
     onEnemyBaseDestroyed() {
         console.log("Enemy base destroyed - Victory!");
+        
+        // Award XP for destroying the enemy base
+        const xpReward = gameManager.economyConfig.xpRewards.baseDestroy;
+        gameManager.addXP(xpReward, 'base destroy');
+        
+        // Show XP reward text
+        const basePosition = this.enemyBase.getPosition();
+        this.showXPRewardEffect(basePosition.x, basePosition.y, `+${xpReward} XP`);
+        this.updateXPDisplay();
+        
         this.gameActive = false;
         // You could add victory screen, next level option, etc. here
     }
@@ -793,8 +806,20 @@ export default class GameScene extends Phaser.Scene {
             strokeThickness: 2,
             shadow: { offsetX: 1, offsetY: 1, color: '#000000', blur: 1, stroke: true, fill: true }
         });
-        this.goldText.setScrollFactor(0); // Fix to camera so it stays on screen
-        this.goldText.setDepth(100);      // Make sure it's visible above other elements
+
+        // Create XP display below the gold display
+        this.xpText = this.add.text(10, 35, `XP: ${gameManager.xp}`, {
+            fontFamily: 'Arial',
+            fontSize: 18,
+            color: '#32CD32',
+            stroke: '#000000',
+            strokeThickness: 2,
+            shadow: { offsetX: 1, offsetY: 1, color: '#000000', blur: 1, stroke: true, fill: true }
+        });
+        
+        // Fix gold text to camera
+        this.goldText.setScrollFactor(0);
+        this.xpText.setScrollFactor(0);
         
         // Set up passive income timer - ensure it's properly configured
         if (this.passiveIncomeTimer) {
@@ -814,7 +839,7 @@ export default class GameScene extends Phaser.Scene {
         
         // Move control information to top-left under gold display
         // Create troop spawning info below the gold display
-        const troopInfo = this.add.text(10, 35, 
+        const troopInfo = this.add.text(10, 55, 
             'Troops: [1] Light (20g)  [2] Ranged (35g)  [3] Heavy (50g)  Testing: [7-9] Enemy troops', {
             fontFamily: 'Arial',
             fontSize: 12,
@@ -826,7 +851,7 @@ export default class GameScene extends Phaser.Scene {
         troopInfo.setDepth(100);
         
         // Create upgrade button text below troop info
-        const upgradeInfo = this.add.text(10, 55, 
+        const upgradeInfo = this.add.text(10, 75, 
             'Upgrades: [Z] Longbow (400g)  [X] Reinforced Walls (300g)  [C] Improved Arrows (250g)', {
             fontFamily: 'Arial',
             fontSize: 12,
@@ -847,6 +872,7 @@ export default class GameScene extends Phaser.Scene {
         const baseAmount = gameManager.economyConfig.passiveIncome.baseAmount;
         gameManager.addGold(baseAmount, 'passive');
         this.updateGoldDisplay();
+        this.updateXPDisplay();
         console.log(`Passive income: +${baseAmount} gold`);
     }
     
@@ -856,6 +882,15 @@ export default class GameScene extends Phaser.Scene {
     updateGoldDisplay() {
         if (this.goldText) {
             this.goldText.setText(`Gold: ${gameManager.gold}`);
+        }
+    }
+    
+    /**
+     * Update XP display to reflect current XP amount
+     */
+    updateXPDisplay() {
+        if (this.xpText) {
+            this.xpText.setText(`XP: ${gameManager.xp}`);
         }
     }
     
@@ -940,8 +975,15 @@ export default class GameScene extends Phaser.Scene {
         const reward = gameManager.calculateKillReward(troop.category);
         gameManager.addGold(reward, 'enemy kill');
         
+        // Award XP based on troop category
+        const xpReward = gameManager.economyConfig.xpRewards.troopKill[troop.category];
+        gameManager.addXP(xpReward, 'enemy kill');
+        
         // Show floating text for reward
         this.showGoldRewardEffect(troop.sprite.x, troop.sprite.y, `+${reward}`);
+        
+        // Show floating text for XP
+        this.showXPRewardEffect(troop.sprite.x, troop.sprite.y - 20, `+${xpReward} XP`);
     }
     
     /**
@@ -967,6 +1009,32 @@ export default class GameScene extends Phaser.Scene {
             duration: 1500,
             ease: 'Power2',
             onComplete: () => goldText.destroy()
+        });
+    }
+    
+    /**
+     * Show XP reward effect
+     * @param {number} x - X position
+     * @param {number} y - Y position
+     * @param {string} text - Text to display
+     */
+    showXPRewardEffect(x, y, text) {
+        const xpText = this.add.text(x, y, text, {
+            fontFamily: 'Arial',
+            fontSize: 14,
+            color: '#32CD32', // Green color for XP
+            stroke: '#000000',
+            strokeThickness: 2
+        });
+        xpText.setOrigin(0.5);
+        
+        this.tweens.add({
+            targets: xpText,
+            y: y - 40,
+            alpha: 0,
+            duration: 1500,
+            ease: 'Power2',
+            onComplete: () => xpText.destroy()
         });
     }
     
