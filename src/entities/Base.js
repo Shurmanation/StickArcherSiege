@@ -243,4 +243,15 @@ export default class Base {
             }
         }
     }
+    
+    /**
+     * Get the base position
+     * @returns {Object} Object with x and y coordinates
+     */
+    getPosition() {
+        return {
+            x: this.sprite ? this.sprite.x : 0,
+            y: this.sprite ? this.sprite.y : 0
+        };
+    }
 } 

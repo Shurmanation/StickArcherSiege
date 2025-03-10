@@ -77,31 +77,45 @@ export default class GameScene extends Phaser.Scene {
         
         // Setup economy display and systems
         this.setupEconomySystem();
+        
+        // After everything is set up, update UI elements based on game state
+        this.updateBasedOnGameState();
     }
 
     update(time, delta) {
-        // Skip update if game is not active
-        if (!this.gameActive) return;
-        
-        // Get player input and update hero
-        if (this.hero && this.keys) {
-            this.hero.update(this.keys);
+        try {
+            // Skip update if game is not active
+            if (!this.gameActive) return;
+            
+            // Get player input and update hero
+            if (this.hero && this.keys) {
+                this.hero.update(this.keys);
+            }
+            
+            // Update UI
+            this.updateUI();
+            
+            // Use star parallax if available
+            if (typeof this.updateStarParallax === 'function') {
+                this.updateStarParallax();
+            }
+            
+            // Update troop movements
+            this.updateTroops(delta);
+            
+            // Clean up arrows that are out of bounds
+            if (typeof this.cleanupArrows === 'function') {
+                this.cleanupArrows();
+            }
+            
+            // Update gold display if it exists
+            this.updateGoldDisplay();
+            
+            // Update XP display if it exists
+            this.updateXPDisplay();
+        } catch (error) {
+            console.warn("Error in update method:", error);
         }
-        
-        // Update UI
-        this.updateStarParallax();
-        
-        // Update troop movements
-        this.updateTroops(delta);
-        
-        // Clean up arrows that are out of bounds
-        this.cleanupArrows();
-        
-        // Update gold display if it exists
-        this.updateGoldDisplay();
-        
-        // Update XP display if it exists
-        this.updateXPDisplay();
     }
     
     /**
@@ -373,27 +387,39 @@ export default class GameScene extends Phaser.Scene {
      * Create player and enemy bases
      */
     createBases() {
-        // Create player base on the left side
-        this.playerBase = new Base(this, 150, 500, {
-            color: 0x3333FF,        // Blue color for player
+        // Create player base on the left
+        this.playerBase = new Base(this, 100, this.GROUND_Y - 80, {
             isPlayerBase: true,
-            name: "Player Base",
-            width: 60,
-            height: 100,
-            health: 1000,
-            maxHealth: 1000
+            color: 0x3333FF,
+            health: 300,
+            maxHealth: 300,
+            width: 80,
+            height: 150
         });
         
-        // Create enemy base on the far right side
-        this.enemyBase = new Base(this, this.worldBounds.width - 150, 500, {
-            color: 0xFF3333,        // Red color for enemy
+        // Create enemy base on the right
+        let enemyBaseHealth = 300; // Base health amount
+        
+        // Apply enemy upgrades if they exist
+        const enemyUpgradeEffects = gameManager.getEnemyUpgradeEffects();
+        if (enemyUpgradeEffects.enemyBaseHealthBoost) {
+            // Apply health boost (e.g., multiply by 1.2 for 20% increase)
+            enemyBaseHealth = Math.floor(enemyBaseHealth * enemyUpgradeEffects.enemyBaseHealthBoost);
+            console.log(`Enemy base health boosted to ${enemyBaseHealth}`);
+        }
+        
+        this.enemyBase = new Base(this, this.WORLD_WIDTH - 100, this.GROUND_Y - 80, {
             isPlayerBase: false,
-            name: "Enemy Base",
-            width: 60,
-            height: 100,
-            health: 1000,
-            maxHealth: 1000
+            color: 0xFF3333,
+            health: enemyBaseHealth,
+            maxHealth: enemyBaseHealth,
+            width: 80, 
+            height: 150
         });
+        
+        // Register base destruction callbacks
+        this.playerBase.onDestroyed = () => this.onPlayerBaseDestroyed();
+        this.enemyBase.onDestroyed = () => this.onEnemyBaseDestroyed();
     }
     
     /**
@@ -429,13 +455,24 @@ export default class GameScene extends Phaser.Scene {
         const xpReward = gameManager.economyConfig.xpRewards.baseDestroy;
         gameManager.addXP(xpReward, 'base destroy');
         
+        // Get the enemy base position properly
+        const basePosition = this.enemyBase.getPosition ? 
+            this.enemyBase.getPosition() : 
+            { x: this.enemyBase.sprite.x, y: this.enemyBase.sprite.y };
+        
         // Show XP reward text
-        const basePosition = this.enemyBase.getPosition();
         this.showXPRewardEffect(basePosition.x, basePosition.y, `+${xpReward} XP`);
         this.updateXPDisplay();
         
         this.gameActive = false;
-        // You could add victory screen, next level option, etc. here
+        
+        console.log("Starting transition to UpgradeScene in 1.5 seconds...");
+        
+        // Use a more reliable approach for scene transition
+        setTimeout(() => {
+            console.log("Transitioning to UpgradeScene now");
+            this.scene.start('UpgradeScene', { fromScene: 'GameScene' });
+        }, 1500);
     }
 
     /**
@@ -472,6 +509,9 @@ export default class GameScene extends Phaser.Scene {
     spawnAllyTroop(category = "Light", customConfig = {}) {
         if (!this.playerBase || !this.enemyBase) return;
         
+        // Merge customConfig with any needed additional properties
+        const config = { ...customConfig };
+        
         // Create a troop at the player base position targeting the enemy base
         const troop = new Troop(
             this,
@@ -480,16 +520,16 @@ export default class GameScene extends Phaser.Scene {
             category,
             this.enemyBase.sprite.x,
             false, // Not an enemy
-            customConfig
+            config
         );
         
         // Add to troops array
         this.troops.push(troop);
         
-        // Add collision with platforms
-        this.physics.add.collider(troop.sprite, this.platforms);
+        // Set up arrow registration for ranged troops
+        this.registerArrowsForTroop(troop);
         
-        console.log(`Spawned ally ${category} troop heading to enemy base`);
+        return troop;
     }
     
     /**
@@ -558,27 +598,26 @@ export default class GameScene extends Phaser.Scene {
     }
 
     /**
-     * Configure camera to follow the hero with offset and deadzone
+     * Setup the camera
      */
     setupCamera() {
-        // Set camera bounds to match world bounds
-        this.cameras.main.setBounds(0, 0, this.WORLD_WIDTH, this.WORLD_HEIGHT);
+        // Configure camera to follow hero
+        const camera = this.cameras.main;
+        camera.setBounds(0, 0, this.WORLD_WIDTH, this.WORLD_HEIGHT);
+        camera.startFollow(this.hero.sprite, true, 0.1, 0.1);
         
-        // Follow the hero with offset (showing more to the right)
-        this.cameras.main.startFollow(
-            this.hero.sprite,
-            true,                   // Round pixels to avoid visual artifacts
-            0.1,                    // Horizontal lerp (smoothness)
-            0.1,                    // Vertical lerp (smoothness)
-            150,                    // X offset (positive shows more to the right)
-            0                       // Y offset
-        );
-        
-        // Set a larger deadzone to reduce camera movement for small player movements
-        this.cameras.main.setDeadzone(150, 100);
-        
-        // Set follow offset to show more of what's ahead
-        this.cameras.main.setFollowOffset(-150, 0);
+        // Ensure UI stays fixed to camera
+        this.events.on('update', this.updateUI, this);
+    }
+    
+    /**
+     * Update UI elements to stay fixed to the camera
+     */
+    updateUI() {
+        if (this.uiContainer) {
+            // Position the UI container at the camera's scroll position
+            this.uiContainer.setPosition(this.cameras.main.scrollX, this.cameras.main.scrollY);
+        }
     }
 
     /**
@@ -631,21 +670,29 @@ export default class GameScene extends Phaser.Scene {
      * Set up all input controls for the game
      */
     setupInputs() {
-        // Create cursor input for controlling the hero
-        this.keys = this.input.keyboard.addKeys({
+        // Set up mouse/touch input for aiming and shooting
+        this.setupMouseControls();
+        
+        // Set up keyboard input for movement
+        const keys = this.input.keyboard.addKeys({
             left: Phaser.Input.Keyboard.KeyCodes.A,
             right: Phaser.Input.Keyboard.KeyCodes.D,
             up: Phaser.Input.Keyboard.KeyCodes.W,
             down: Phaser.Input.Keyboard.KeyCodes.S,
-            // Keep SPACE for other functionality but not for platform summoning
             space: Phaser.Input.Keyboard.KeyCodes.SPACE
         });
         
-        // Setup mouse controls
-        this.setupMouseControls();
+        // Pass keys to the update method
+        this.keys = keys;
         
-        // Setup troop spawning controls
+        // Set up keyboard shortcuts for upgrades
+        this.setupUpgradeShortcuts();
+        
+        // Set up troop control shortcuts
         this.setupTroopControls();
+        
+        // Setup enemy test spawning
+        this.setupTestingControls();
     }
     
     /**
@@ -672,10 +719,55 @@ export default class GameScene extends Phaser.Scene {
     }
     
     /**
-     * Set up keyboard controls for troop spawning
+     * Set up keyboard shortcuts for upgrades
+     */
+    setupUpgradeShortcuts() {
+        // Key bindings for base upgrades - show description on down, purchase on up
+        this.input.keyboard.on('keydown-Z', () => {
+            if (this.upgradeDescriptionBox) return;
+            this.showUpgradeDescription('longbowTraining');
+        });
+        this.input.keyboard.on('keyup-Z', () => {
+            if (this.upgradeDescriptionBox) {
+                this.upgradeDescriptionBox.destroy();
+                this.upgradeDescriptionBox = null;
+                this.purchaseBaseUpgrade('longbowTraining');
+            }
+        });
+        
+        this.input.keyboard.on('keydown-X', () => {
+            if (this.upgradeDescriptionBox) return;
+            this.showUpgradeDescription('reinforcedWalls');
+        });
+        this.input.keyboard.on('keyup-X', () => {
+            if (this.upgradeDescriptionBox) {
+                this.upgradeDescriptionBox.destroy();
+                this.upgradeDescriptionBox = null;
+                this.purchaseBaseUpgrade('reinforcedWalls');
+            }
+        });
+        
+        this.input.keyboard.on('keydown-C', () => {
+            if (this.upgradeDescriptionBox) return;
+            this.showUpgradeDescription('improvedArrows');
+        });
+        this.input.keyboard.on('keyup-C', () => {
+            if (this.upgradeDescriptionBox) {
+                this.upgradeDescriptionBox.destroy();
+                this.upgradeDescriptionBox = null;
+                this.purchaseBaseUpgrade('improvedArrows');
+            }
+        });
+        
+        // Add debug info about controls to console
+        console.log("Base Upgrades: Z (Longbow Training), X (Reinforced Walls), C (Improved Arrows)");
+    }
+    
+    /**
+     * Set up troop control shortcuts
      */
     setupTroopControls() {
-        // Keyboard controls for spawning troops
+        // Set up keyboard shortcuts for spawning troops
         this.input.keyboard.on('keydown-ONE', () => {
             this.spawnAllyTroopWithGold('Light');
         });
@@ -688,48 +780,19 @@ export default class GameScene extends Phaser.Scene {
             this.spawnAllyTroopWithGold('Heavy');
         });
         
-        // Key bindings for base upgrades
-        this.input.keyboard.on('keydown-Z', () => {
-            this.purchaseBaseUpgrade('longbowTraining');
-        });
-        
-        this.input.keyboard.on('keydown-X', () => {
-            this.purchaseBaseUpgrade('reinforcedWalls');
-        });
-        
-        this.input.keyboard.on('keydown-C', () => {
-            this.purchaseBaseUpgrade('improvedArrows');
-        });
-        
-        // Add back enemy troop spawning for testing - using number keys with SHIFT
-        this.input.keyboard.on('keydown-SEVEN', () => {
-            if (this.gameActive) {
-                this.spawnEnemyTroop("Light");
-                console.log("Spawned enemy Light troop (testing)");
+        this.input.keyboard.on('keydown-FOUR', () => {
+            // Only check if the feature is unlocked
+            if (gameManager.isFeatureUnlocked('longbowTraining')) {
+                this.spawnAllyTroopWithGold('Ranged', 'Longbowman');
+            } else {
+                this.showUpgradeMessage('Longbowmen not unlocked!', '#FF0000');
             }
         });
         
-        this.input.keyboard.on('keydown-EIGHT', () => {
-            if (this.gameActive) {
-                this.spawnEnemyTroop("Ranged");
-                console.log("Spawned enemy Ranged troop (testing)");
-            }
-        });
-        
-        this.input.keyboard.on('keydown-NINE', () => {
-            if (this.gameActive) {
-                this.spawnEnemyTroop("Heavy");
-                console.log("Spawned enemy Heavy troop (testing)");
-            }
-        });
-        
-        // Add debug info about controls
-        console.log("Troop Controls:");
-        console.log("Ally Troops: 1 (Light), 2 (Ranged), 3 (Heavy)");
-        console.log("Enemy Troops (Testing): 7 (Light), 8 (Ranged), 9 (Heavy)");
-        console.log("Base Upgrades: Z (Longbow Training), X (Reinforced Walls), C (Improved Arrows)");
+        // Add debug info about troop controls
+        console.log("Troop Controls: 1 (Light), 2 (Ranged), 3 (Heavy), 4 (Longbowman if unlocked)");
     }
-
+    
     /**
      * Create a health bar for the hero
      */
@@ -794,73 +857,20 @@ export default class GameScene extends Phaser.Scene {
     }
 
     /**
-     * Sets up the economy system including gold display and passive income
+     * Sets up the economy system including passive income
      */
     setupEconomySystem() {
-        // Create gold display in the top-left corner of the screen
-        this.goldText = this.add.text(10, 10, `Gold: ${gameManager.gold}`, {
-            fontFamily: 'Arial',
-            fontSize: 18,
-            color: '#FFD700',
-            stroke: '#000000',
-            strokeThickness: 2,
-            shadow: { offsetX: 1, offsetY: 1, color: '#000000', blur: 1, stroke: true, fill: true }
-        });
-
-        // Create XP display below the gold display
-        this.xpText = this.add.text(10, 35, `XP: ${gameManager.xp}`, {
-            fontFamily: 'Arial',
-            fontSize: 18,
-            color: '#32CD32',
-            stroke: '#000000',
-            strokeThickness: 2,
-            shadow: { offsetX: 1, offsetY: 1, color: '#000000', blur: 1, stroke: true, fill: true }
-        });
-        
-        // Fix gold text to camera
-        this.goldText.setScrollFactor(0);
-        this.xpText.setScrollFactor(0);
-        
-        // Set up passive income timer - ensure it's properly configured
-        if (this.passiveIncomeTimer) {
-            this.passiveIncomeTimer.remove();
+        try {
+            // Schedule passive income generation
+            this.time.addEvent({
+                delay: gameManager.economyConfig.passiveIncome.interval,
+                callback: this.generatePassiveIncome,
+                callbackScope: this,
+                loop: true
+            });
+        } catch (error) {
+            console.warn("Error in setupEconomySystem:", error);
         }
-        
-        this.passiveIncomeTimer = this.time.addEvent({
-            delay: gameManager.economyConfig.passiveIncome.interval,
-            callback: this.generatePassiveIncome,
-            callbackScope: this,
-            loop: true,
-            startAt: 0
-        });
-        
-        // Generate initial passive income immediately to ensure it's working
-        this.generatePassiveIncome();
-        
-        // Move control information to top-left under gold display
-        // Create troop spawning info below the gold display
-        const troopInfo = this.add.text(10, 55, 
-            'Troops: [1] Light (20g)  [2] Ranged (35g)  [3] Heavy (50g)  Testing: [7-9] Enemy troops', {
-            fontFamily: 'Arial',
-            fontSize: 12,
-            color: '#FFFFFF',
-            stroke: '#000000',
-            strokeThickness: 1
-        });
-        troopInfo.setScrollFactor(0);
-        troopInfo.setDepth(100);
-        
-        // Create upgrade button text below troop info
-        const upgradeInfo = this.add.text(10, 75, 
-            'Upgrades: [Z] Longbow (400g)  [X] Reinforced Walls (300g)  [C] Improved Arrows (250g)', {
-            fontFamily: 'Arial',
-            fontSize: 12,
-            color: '#FFFFFF',
-            stroke: '#000000',
-            strokeThickness: 1
-        });
-        upgradeInfo.setScrollFactor(0);
-        upgradeInfo.setDepth(100);
     }
     
     /**
@@ -880,8 +890,12 @@ export default class GameScene extends Phaser.Scene {
      * Update the gold display text
      */
     updateGoldDisplay() {
-        if (this.goldText) {
-            this.goldText.setText(`Gold: ${gameManager.gold}`);
+        try {
+            if (this.goldText && typeof this.goldText.setText === 'function') {
+                this.goldText.setText(`Gold: ${gameManager.gold}`);
+            }
+        } catch (error) {
+            console.warn("Error updating gold display:", error);
         }
     }
     
@@ -889,16 +903,46 @@ export default class GameScene extends Phaser.Scene {
      * Update XP display to reflect current XP amount
      */
     updateXPDisplay() {
-        if (this.xpText) {
-            this.xpText.setText(`XP: ${gameManager.xp}`);
+        try {
+            if (this.xpText && typeof this.xpText.setText === 'function') {
+                this.xpText.setText(`XP: ${gameManager.xp}`);
+            }
+        } catch (error) {
+            console.warn("Error updating XP display:", error);
         }
     }
     
     /**
      * Spawn ally troop if player has enough gold
      * @param {string} category - Troop category (Light, Medium, Heavy)
+     * @param {string} type - Optional specific troop type within the category
      */
-    spawnAllyTroopWithGold(category) {
+    spawnAllyTroopWithGold(category, type = null) {
+        // Handle special case for Longbowman
+        if (type === 'Longbowman') {
+            // Check if longbowmen are unlocked (as a feature)
+            if (!gameManager.isFeatureUnlocked('longbowTraining')) {
+                this.showUpgradeMessage('Unlock longbowmen training first!', '#FF0000');
+                return;
+            }
+            
+            // Use the custom cost for longbowmen
+            const cost = 75; // Could also be retrieved from troop config
+            
+            if (gameManager.spendGold(cost, `spawn Longbowman`)) {
+                // Spawn with specific type
+                this.spawnAllyTroop(category, { type: 'Longbowman' });
+                
+                // Show visual feedback
+                this.showGoldSpendEffect(this.playerBase.sprite.x, this.playerBase.sprite.y - 30, `-${cost}g`);
+                this.updateGoldDisplay();
+            } else {
+                this.showNotEnoughGoldMessage();
+            }
+            return;
+        }
+        
+        // Standard troop spawning for other types
         const cost = gameManager.getUnitCost(category);
         
         if (gameManager.spendGold(cost, `spawn ${category} troop`)) {
@@ -906,9 +950,9 @@ export default class GameScene extends Phaser.Scene {
             this.spawnAllyTroop(category);
             
             // Show visual feedback
-            this.showGoldSpendEffect(this.playerBase.x + 20, this.playerBase.y - 30, `-${cost}g`);
+            this.showGoldSpendEffect(this.playerBase.sprite.x, this.playerBase.sprite.y - 30, `-${cost}g`);
+            this.updateGoldDisplay();
         } else {
-            // Show "Not enough gold" message near the player base
             this.showNotEnoughGoldMessage();
         }
     }
@@ -1019,23 +1063,32 @@ export default class GameScene extends Phaser.Scene {
      * @param {string} text - Text to display
      */
     showXPRewardEffect(x, y, text) {
-        const xpText = this.add.text(x, y, text, {
-            fontFamily: 'Arial',
-            fontSize: 14,
-            color: '#32CD32', // Green color for XP
-            stroke: '#000000',
-            strokeThickness: 2
-        });
-        xpText.setOrigin(0.5);
-        
-        this.tweens.add({
-            targets: xpText,
-            y: y - 40,
-            alpha: 0,
-            duration: 1500,
-            ease: 'Power2',
-            onComplete: () => xpText.destroy()
-        });
+        try {
+            const xpText = this.add.text(x, y, text, {
+                fontFamily: 'Arial',
+                fontSize: 14,
+                color: '#32CD32', // Green color for XP
+                stroke: '#000000',
+                strokeThickness: 2
+            });
+            xpText.setOrigin(0.5);
+            
+            // Create a shorter, simpler tween that won't interfere with scene transitions
+            this.tweens.add({
+                targets: xpText,
+                y: y - 30,
+                alpha: 0,
+                duration: 800,
+                ease: 'Power1',
+                onComplete: () => {
+                    if (xpText && xpText.destroy) {
+                        xpText.destroy();
+                    }
+                }
+            });
+        } catch (error) {
+            console.warn("Error showing XP reward effect:", error);
+        }
     }
     
     /**
@@ -1102,9 +1155,10 @@ export default class GameScene extends Phaser.Scene {
         // Apply specific upgrade effects
         switch (upgradeId) {
             case 'longbowTraining':
-                // Placeholder for unlocking longbowmen units
+                // Unlock longbowmen units for summoning
                 this.showUpgradeMessage('Longbowmen unlocked!', '#00FF00');
-                // Future implementation: this.unlockedUnits.longbowmen = true;
+                // Update the troop button UI
+                this.updateSpecialTroopButtons();
                 break;
                 
             case 'reinforcedWalls':
@@ -1158,6 +1212,409 @@ export default class GameScene extends Phaser.Scene {
             default:
                 console.log(`No effect implementation for upgrade: ${upgradeId}`);
                 break;
+        }
+    }
+
+    /**
+     * Update UI elements and features based on current game state
+     * Called when the scene starts or after round advancement
+     */
+    updateBasedOnGameState() {
+        try {
+            console.log("Updating game state for round:", gameManager.currentRound);
+            
+            // Always restart with fresh UI elements to avoid reusing problematic objects
+            this._cleanupUIElements();
+            
+            // Create a fresh UI container
+            this.uiContainer = this.add.container(0, 0);
+            this.uiContainer.setDepth(1000); // Ensure UI is on top
+            
+            // Create new round text
+            const roundText = this.add.text(
+                this.cameras.main.width - 120, 
+                10, 
+                `Round: ${gameManager.currentRound}`, 
+                { 
+                    fontFamily: 'Arial', 
+                    fontSize: 16, 
+                    color: '#FFFFFF'
+                }
+            );
+            this.roundText = roundText;
+            this.uiContainer.add(roundText);
+            
+            // Setup the gold and XP display
+            this._setupEconomyDisplay();
+            
+            // Recreate troop buttons
+            this._setupTroopButtons();
+            
+            // If it's the first round, provide some basic instructions
+            if (gameManager.currentRound === 1) {
+                const instructions = this.add.text(
+                    this.cameras.main.width / 2,
+                    this.cameras.main.height - 50,
+                    'Defeat the enemy base to advance to the next round!',
+                    {
+                        fontFamily: 'Arial',
+                        fontSize: 18,
+                        color: '#FFFFFF'
+                    }
+                ).setOrigin(0.5);
+                
+                this.uiContainer.add(instructions);
+                
+                // Fade out after 5 seconds
+                this.tweens.add({
+                    targets: instructions,
+                    alpha: 0,
+                    delay: 5000,
+                    duration: 1000,
+                    onComplete: () => {
+                        if (instructions && instructions.destroy) {
+                            instructions.destroy();
+                        }
+                    }
+                });
+            }
+            
+            // Reinitialize game state
+            this.gameActive = true;
+            
+            console.log("Game state update completed successfully!");
+        } catch (error) {
+            console.warn("Error in updateBasedOnGameState:", error);
+            // Make sure the game is still active even if there's an error
+            this.gameActive = true;
+        }
+    }
+    
+    /**
+     * Clean up existing UI elements to avoid conflicts
+     * @private
+     */
+    _cleanupUIElements() {
+        // Safe cleanup of UI container
+        if (this.uiContainer) {
+            try {
+                this.uiContainer.destroy();
+            } catch (e) {
+                console.warn("Error destroying UI container:", e);
+            }
+            this.uiContainer = null;
+        }
+        
+        // Clean up round text
+        if (this.roundText) {
+            try {
+                this.roundText.destroy();
+            } catch (e) {
+                console.warn("Error destroying round text:", e);
+            }
+            this.roundText = null;
+        }
+        
+        // Clean up troop buttons
+        const troopButtons = [
+            'lightTroopButton', 
+            'heavyTroopButton', 
+            'rangedTroopButton', 
+            'longbowmanButton'
+        ];
+        
+        troopButtons.forEach(buttonName => {
+            if (this[buttonName]) {
+                try {
+                    this[buttonName].destroy();
+                } catch (e) {
+                    console.warn(`Error destroying ${buttonName}:`, e);
+                }
+                this[buttonName] = null;
+            }
+        });
+        
+        // Clean up economy display
+        if (this.goldText) {
+            try {
+                this.goldText.destroy();
+            } catch (e) {
+                console.warn("Error destroying gold text:", e);
+            }
+            this.goldText = null;
+        }
+        
+        if (this.xpText) {
+            try {
+                this.xpText.destroy();
+            } catch (e) {
+                console.warn("Error destroying XP text:", e);
+            }
+            this.xpText = null;
+        }
+    }
+    
+    /**
+     * Set up simplified economy display
+     * @private
+     */
+    _setupEconomyDisplay() {
+        try {
+            // Create gold display text with minimal styling
+            this.goldText = this.add.text(10, 10, `Gold: ${gameManager.gold}`, {
+                fontFamily: 'Arial',
+                fontSize: 16,
+                color: '#FFFFFF'
+            });
+            this.uiContainer.add(this.goldText);
+            
+            // Create XP display text with minimal styling
+            this.xpText = this.add.text(10, 35, `XP: ${gameManager.xp}`, {
+                fontFamily: 'Arial',
+                fontSize: 16,
+                color: '#FFFFFF'
+            });
+            this.uiContainer.add(this.xpText);
+        } catch (error) {
+            console.warn("Error setting up economy display:", error);
+        }
+    }
+    
+    /**
+     * Set up troop buttons
+     * @private
+     */
+    _setupTroopButtons() {
+        try {
+            // UI positions
+            const controlsX = 120;
+            const controlsY = 50;
+            const spacing = 80;
+            
+            // Create light troop button
+            this.lightTroopButton = this.add.container(controlsX, controlsY);
+            const lightBg = this.add.circle(0, 0, 30, 0x00AA00)
+                .setInteractive({ useHandCursor: true })
+                .on('pointerdown', () => this.spawnAllyTroopWithGold('Light'));
+            
+            const lightText = this.add.text(0, 0, 'L', { 
+                fontFamily: 'Arial',
+                fontSize: 24,
+                color: '#FFFFFF' 
+            }).setOrigin(0.5);
+            
+            const lightCost = this.add.text(0, 30, `${gameManager.getUnitCost('Light')}g`, { 
+                fontFamily: 'Arial',
+                fontSize: 14,
+                color: '#FFFFFF' 
+            }).setOrigin(0.5);
+            
+            this.lightTroopButton.add([lightBg, lightText, lightCost]);
+            this.uiContainer.add(this.lightTroopButton);
+            
+            // Create heavy troop button
+            this.heavyTroopButton = this.add.container(controlsX + spacing, controlsY);
+            const heavyBg = this.add.circle(0, 0, 30, 0x008800)
+                .setInteractive({ useHandCursor: true })
+                .on('pointerdown', () => this.spawnAllyTroopWithGold('Heavy'));
+            
+            const heavyText = this.add.text(0, 0, 'H', { 
+                fontFamily: 'Arial',
+                fontSize: 24,
+                color: '#FFFFFF' 
+            }).setOrigin(0.5);
+            
+            const heavyCost = this.add.text(0, 30, `${gameManager.getUnitCost('Heavy')}g`, { 
+                fontFamily: 'Arial',
+                fontSize: 14,
+                color: '#FFFFFF' 
+            }).setOrigin(0.5);
+            
+            this.heavyTroopButton.add([heavyBg, heavyText, heavyCost]);
+            this.uiContainer.add(this.heavyTroopButton);
+            
+            // Create ranged troop button
+            this.rangedTroopButton = this.add.container(controlsX + spacing * 2, controlsY);
+            const rangedBg = this.add.circle(0, 0, 30, 0x00CC00)
+                .setInteractive({ useHandCursor: true })
+                .on('pointerdown', () => this.spawnAllyTroopWithGold('Ranged'));
+            
+            const rangedText = this.add.text(0, 0, 'R', { 
+                fontFamily: 'Arial',
+                fontSize: 24,
+                color: '#FFFFFF' 
+            }).setOrigin(0.5);
+            
+            const rangedCost = this.add.text(0, 30, `${gameManager.getUnitCost('Ranged')}g`, { 
+                fontFamily: 'Arial',
+                fontSize: 14,
+                color: '#FFFFFF' 
+            }).setOrigin(0.5);
+            
+            this.rangedTroopButton.add([rangedBg, rangedText, rangedCost]);
+            this.uiContainer.add(this.rangedTroopButton);
+            
+            // Create longbowman button 
+            this.longbowmanButton = this.add.container(controlsX + spacing * 3, controlsY);
+            const longbowBg = this.add.circle(0, 0, 30, 0x225588)
+                .setInteractive({ useHandCursor: true })
+                .on('pointerdown', () => this.spawnAllyTroopWithGold('Ranged', 'Longbowman'));
+            
+            const longbowText = this.add.text(0, 0, 'LB', { 
+                fontFamily: 'Arial',
+                fontSize: 20,
+                color: '#FFFFFF' 
+            }).setOrigin(0.5);
+            
+            const longbowCost = this.add.text(0, 30, '75g', { 
+                fontFamily: 'Arial',
+                fontSize: 14,
+                color: '#FFFFFF' 
+            }).setOrigin(0.5);
+            
+            this.longbowmanButton.add([longbowBg, longbowText, longbowCost]);
+            
+            // Initially hide, will be updated in updateSpecialTroopButtons
+            this.longbowmanButton.setVisible(false);
+            this.uiContainer.add(this.longbowmanButton);
+            
+            // Update visibility based on unlocks
+            this.updateSpecialTroopButtons();
+        } catch (error) {
+            console.warn("Error setting up troop buttons:", error);
+        }
+    }
+
+    /**
+     * Set up testing-only controls
+     */
+    setupTestingControls() {
+        // Add enemy troop spawning for testing - using number keys
+        this.input.keyboard.on('keydown-SEVEN', () => {
+            if (this.gameActive) {
+                this.spawnEnemyTroop("Light");
+                console.log("Spawned enemy Light troop (testing)");
+            }
+        });
+        
+        this.input.keyboard.on('keydown-EIGHT', () => {
+            if (this.gameActive) {
+                this.spawnEnemyTroop("Ranged");
+                console.log("Spawned enemy Ranged troop (testing)");
+            }
+        });
+        
+        this.input.keyboard.on('keydown-NINE', () => {
+            if (this.gameActive) {
+                this.spawnEnemyTroop("Heavy");
+                console.log("Spawned enemy Heavy troop (testing)");
+            }
+        });
+        
+        // Add debug info about controls
+        console.log("Testing Controls: Enemy Troops: 7 (Light), 8 (Ranged), 9 (Heavy)");
+    }
+
+    /**
+     * Show upgrade description
+     * @param {string} upgradeId - ID of the upgrade to describe
+     */
+    showUpgradeDescription(upgradeId) {
+        try {
+            // Get upgrade info
+            const upgrade = gameManager.economyConfig.baseUpgrades[upgradeId];
+            if (!upgrade) return;
+            
+            // Create description box near the middle of the screen
+            const descriptionBox = this.add.container(
+                this.cameras.main.width / 2,
+                this.cameras.main.height / 2 - 50
+            );
+            
+            // Background
+            const bg = this.add.rectangle(0, 0, 400, 150, 0x000000, 0.8)
+                .setOrigin(0.5);
+            bg.setStrokeStyle(2, 0xFFFFFF);
+            
+            // Upgrade title
+            const title = this.add.text(0, -50, upgradeId, {
+                fontFamily: 'Arial',
+                fontSize: 24,
+                color: '#FFFFFF'
+            }).setOrigin(0.5);
+            
+            // Description
+            const description = this.add.text(0, -10, upgrade.description, {
+                fontFamily: 'Arial',
+                fontSize: 18,
+                color: '#FFFFFF'
+            }).setOrigin(0.5);
+            
+            // Cost
+            const cost = this.add.text(0, 30, `Cost: ${upgrade.cost} gold`, {
+                fontFamily: 'Arial',
+                fontSize: 18,
+                color: gameManager.gold >= upgrade.cost ? '#00FF00' : '#FF0000'
+            }).setOrigin(0.5);
+            
+            // Add close hint
+            const closeHint = this.add.text(0, 60, 'Press ESC to close', {
+                fontFamily: 'Arial',
+                fontSize: 14,
+                color: '#CCCCCC'
+            }).setOrigin(0.5);
+            
+            descriptionBox.add([bg, title, description, cost, closeHint]);
+            
+            // Make sure UI container exists
+            if (!this.uiContainer) {
+                this.uiContainer = this.add.container(0, 0);
+                this.uiContainer.setDepth(1000);
+            }
+            
+            // Add to UI container to stick with camera
+            if (this.uiContainer && descriptionBox) {
+                this.uiContainer.add(descriptionBox);
+            }
+            
+            // Store reference
+            this.upgradeDescriptionBox = descriptionBox;
+            
+            // Set up key to close it
+            const escKey = this.input.keyboard.addKey('ESC');
+            escKey.once('down', () => {
+                if (this.upgradeDescriptionBox) {
+                    this.upgradeDescriptionBox.destroy();
+                    this.upgradeDescriptionBox = null;
+                }
+            });
+            
+            // Auto-close after 5 seconds
+            this.time.delayedCall(5000, () => {
+                if (this.upgradeDescriptionBox) {
+                    this.upgradeDescriptionBox.destroy();
+                    this.upgradeDescriptionBox = null;
+                }
+            });
+        } catch (error) {
+            console.warn("Error in showUpgradeDescription:", error);
+        }
+    }
+
+    /**
+     * Update the visibility of special troop buttons based on unlocked features and upgrades
+     */
+    updateSpecialTroopButtons() {
+        // Skip if longbowman button doesn't exist yet
+        if (!this.longbowmanButton) return;
+        
+        // Longbowman button visibility - show it if the feature is unlocked
+        // We don't need to check purchasedUpgrades here because the button should be 
+        // visible once the feature is unlocked via XP, so you can purchase it with gold
+        if (gameManager.isFeatureUnlocked('longbowTraining')) {
+            this.longbowmanButton.setVisible(true);
+        } else {
+            this.longbowmanButton.setVisible(false);
         }
     }
 }

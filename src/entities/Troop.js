@@ -74,6 +74,26 @@ const TROOP_CONFIGS = {
             projectileColor: 0x000000,  // Black projectile
             projectileWidth: 20,        // Longer projectile
             projectileHeight: 2         // Thinner projectile
+        },
+        // Longbowman unit type within Ranged category - unlocked via XP upgrades
+        Longbowman: {
+            health: 35,
+            speed: 50,            // Slower than regular archers
+            attackRange: 300,     // Much longer range
+            attackSpeed: 3000,    // Slower attack speed
+            attackDamage: 35,     // Higher damage
+            width: 22,
+            height: 40,
+            color: 0x225588,      // Dark blue for ally
+            enemyColor: 0x882255, // Dark purple for enemy
+            depth: 10,
+            projectileType: "longbow",  // Same projectile type as archer
+            projectileSpeed: 500,       // Even faster projectile
+            projectileColor: 0x222222,  // Darker projectile
+            projectileWidth: 25,        // Longer projectile
+            projectileHeight: 2,        // Same thin projectile
+            unlockable: true,           // Indicates this unit must be unlocked
+            goldCost: 75                // Gold cost when purchased in-game
         }
     }
 };
@@ -123,6 +143,11 @@ export default class Troop {
             const parts = category.split(":");
             category = parts[0];
             unitType = parts[1];
+        }
+        
+        // Check for unit type in customConfig
+        if (customConfig.type) {
+            unitType = customConfig.type;
         }
         
         // Store category

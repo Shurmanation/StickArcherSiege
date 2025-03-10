@@ -21,6 +21,12 @@ class GameManager {
         this.gold = 100;           // Starting gold for the player
         this.xp = 0;               // Starting XP for the player
         
+        // Upgrade tracking
+        this.purchasedUpgrades = {};       // In-game gold upgrades
+        this.roundUpgrades = [];           // Between-round XP upgrades
+        this.enemyUpgrades = [];           // Enemy upgrades applied between rounds
+        this.unlockedFeatures = {};        // Features unlocked via upgrades
+
         // Economy configuration - these values can be adjusted via difficulty or upgrades
         this.economyConfig = {
             // Passive income settings
@@ -96,17 +102,30 @@ class GameManager {
                     effectKey: "widePlatforms",
                     category: "platformAbility"
                 }
+            },
+            
+            // Round-based upgrades using XP
+            roundUpgrades: {
+                unlockLongbowTraining: {
+                    name: "Longbowman Training Ground",
+                    description: "Unlock the ability to purchase longbowmen",
+                    cost: 200,
+                    round: 1,
+                    effectKey: "unlockLongbowTraining"
+                }
+            },
+            
+            // Enemy upgrades
+            enemyUpgrades: {
+                enemyBaseHealthBoost: {
+                    name: "Reinforced Enemy Base",
+                    description: "Enemy base has 20% more health",
+                    round: 1, 
+                    effectKey: "enemyBaseHealthBoost",
+                    effectValue: 1.2 // 20% increase
+                }
             }
         };
-        
-        // Track purchased upgrades
-        this.purchasedUpgrades = {};
-        
-        // Placeholders for future features
-        // TODO: Add XP system has been implemented
-        
-        // TODO: Add SP (Stick Points) meta-upgrade system
-        // this.stickPoints = 0;
         
         console.log('GameManager initialized');
     }
@@ -119,7 +138,10 @@ class GameManager {
         this.currentRound = 1;
         this.gold = 100; // Reset gold to starting value
         this.xp = 0;     // Reset XP to starting value
-        this.purchasedUpgrades = {}; // Reset upgrades
+        this.purchasedUpgrades = {}; // Reset in-game upgrades
+        this.roundUpgrades = [];     // Reset between-round upgrades
+        this.enemyUpgrades = [];     // Reset enemy upgrades
+        this.unlockedFeatures = {};  // Reset unlocked features
         
         // Reset future properties when implemented
         // this.stickPoints = 0;
@@ -212,6 +234,23 @@ class GameManager {
     }
     
     /**
+     * Spend XP on a round upgrade
+     * @param {number} amount - Amount of XP to spend
+     * @param {string} reason - What the XP is being spent on
+     * @returns {boolean} - Whether the transaction was successful
+     */
+    spendXP(amount, reason = 'upgrade') {
+        if (this.xp >= amount) {
+            this.xp -= amount;
+            console.log(`Spent ${amount} XP on ${reason}. Remaining: ${this.xp}`);
+            return true;
+        } else {
+            console.log(`Not enough XP for ${reason}. Required: ${amount}, Available: ${this.xp}`);
+            return false;
+        }
+    }
+    
+    /**
      * Calculate kill reward based on unit type
      * @param {string} unitType - Type of unit killed
      * @returns {number} - Gold reward amount
@@ -250,6 +289,11 @@ class GameManager {
         // Check if already purchased
         if (this.purchasedUpgrades[upgradeId]) return false;
         
+        // Check if features required are unlocked
+        if (upgradeId === 'longbowTraining' && !this.unlockedFeatures.longbowTraining) {
+            return false;
+        }
+        
         // Check if player has enough gold
         return this.gold >= upgrade.cost;
     }
@@ -272,6 +316,12 @@ class GameManager {
             return false;
         }
         
+        // Verify any feature requirements
+        if (upgradeId === 'longbowTraining' && !this.unlockedFeatures.longbowTraining) {
+            console.log('Longbow training not unlocked yet.');
+            return false;
+        }
+        
         if (this.spendGold(upgrade.cost, `upgrade: ${upgradeId}`)) {
             this.purchasedUpgrades[upgradeId] = true;
             console.log(`Purchased upgrade: ${upgradeId} - ${upgrade.description}`);
@@ -279,6 +329,97 @@ class GameManager {
         }
         
         return false;
+    }
+    
+    /**
+     * Purchase a round-based upgrade with XP
+     * @param {string} upgradeId - ID of the upgrade to purchase 
+     * @param {number} cost - Cost in XP
+     * @returns {boolean} - Whether the purchase was successful
+     */
+    purchaseRoundUpgrade(upgradeId, cost) {
+        // Check if already purchased
+        if (this.roundUpgrades.includes(upgradeId)) {
+            console.log(`Round upgrade ${upgradeId} already purchased.`);
+            return false;
+        }
+        
+        // Try to spend XP
+        if (this.spendXP(cost, `round upgrade: ${upgradeId}`)) {
+            // Add to purchased round upgrades
+            this.roundUpgrades.push(upgradeId);
+            
+            // Apply the upgrade effects
+            this.applyRoundUpgradeEffect(upgradeId);
+            
+            console.log(`Purchased round upgrade: ${upgradeId}`);
+            return true;
+        }
+        
+        return false;
+    }
+    
+    /**
+     * Apply effect of a round upgrade
+     * @param {string} upgradeId - ID of the upgrade to apply
+     */
+    applyRoundUpgradeEffect(upgradeId) {
+        const upgrade = this.economyConfig.roundUpgrades[upgradeId];
+        if (!upgrade) return;
+        
+        // Apply specific upgrade effects
+        switch(upgradeId) {
+            case 'unlockLongbowTraining':
+                // Unlock the longbowman training feature
+                this.unlockedFeatures.longbowTraining = true;
+                console.log('Unlocked longbowman training feature');
+                break;
+                
+            // Add more round upgrade effects here
+            
+            default:
+                console.log(`No effect implementation for round upgrade: ${upgradeId}`);
+                break;
+        }
+    }
+    
+    /**
+     * Add an enemy upgrade that will affect the next round
+     * @param {string} upgradeId - ID of the enemy upgrade to add
+     */
+    addEnemyUpgrade(upgradeId) {
+        // Don't add duplicates
+        if (this.enemyUpgrades.includes(upgradeId)) return;
+        
+        this.enemyUpgrades.push(upgradeId);
+        console.log(`Added enemy upgrade: ${upgradeId}`);
+    }
+    
+    /**
+     * Get all enemy upgrade effects for the current state
+     * @returns {Object} - Collection of enemy upgrade effects
+     */
+    getEnemyUpgradeEffects() {
+        const effects = {};
+        
+        // Process all enemy upgrades
+        this.enemyUpgrades.forEach(upgradeId => {
+            const upgrade = this.economyConfig.enemyUpgrades[upgradeId];
+            if (upgrade) {
+                effects[upgrade.effectKey] = upgrade.effectValue;
+            }
+        });
+        
+        return effects;
+    }
+    
+    /**
+     * Check if a specific feature is unlocked
+     * @param {string} featureId - ID of the feature to check
+     * @returns {boolean} - Whether the feature is unlocked
+     */
+    isFeatureUnlocked(featureId) {
+        return !!this.unlockedFeatures[featureId];
     }
     
     /**

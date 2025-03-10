@@ -6,6 +6,7 @@
 import GameScene from './scenes/GameScene.js';
 import MenuScene from './scenes/MenuScene.js';
 import DifficultyScene from './scenes/DifficultyScene.js';
+import UpgradeScene from './scenes/UpgradeScene.js';
 import gameManager from './managers/GameManager.js';
 
 // Game configuration
@@ -32,7 +33,7 @@ const config = {
         mouse: true,      // Explicitly enable mouse
         touch: true       // Enable touch for mobile
     },
-    scene: [MenuScene, DifficultyScene, GameScene] // Start with the menu scene
+    scene: [MenuScene, DifficultyScene, GameScene, UpgradeScene] // Add UpgradeScene to scene array
 };
 
 // Initialize the game
